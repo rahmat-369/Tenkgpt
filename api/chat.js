@@ -1,42 +1,46 @@
-// File: api/chat.js
-
 export default async function handler(req, res) {
     // Hanya menerima method POST dari Frontend
     if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method Not Allowed' });
+        return res.status(405).json({ reply: 'Method Not Allowed' });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-        return res.status(500).json({ reply: "API Key Gemini belum disetting di Environment Variable Vercel." });
+        return res.status(500).json({ reply: "DEBUG: GEMINI_API_KEY tidak ditemukan di environment Vercel." });
     }
 
-    // UPDATE: Menangkap data dari Frontend termasuk systemInstructions (Personalisasi)
+    // Menangkap data dari Frontend (Teks, Gambar Base64, ChatID, Mode Sementara, System Instructions)
     const { prompt, images, chatId, isTemp, systemInstructions } = req.body;
 
     // Menyiapkan Payload Multimodal untuk Gemini 1.5 Flash
     let parts = [];
 
-    // UPDATE LOGIKA: Cek apakah prompt meminta pembuatan gambar
+    // Logika deteksi permintaan gambar
     const isImageRequest = prompt && prompt.toLowerCase().startsWith('tolong buatkan gambar:');
     let effectivePrompt = prompt;
 
     if (isImageRequest) {
-        // Trik: Minta Gemini buat prompt Inggris detail buat image generator
-        effectivePrompt = `[SPECIAL INSTRUCTION] The user wants me to generate an image. Do not talk to the user directly. Instead, create a very detailed, descriptive, high-quality prompt in ENGLISH for an AI image generator based on this user request: "${prompt.substring(21)}". Output ONLY the detailed English prompt, nothing else.`;
+        // Trik: Minta Gemini buat prompt Inggris detail untuk image generator
+        effectivePrompt = `[IMAGE GENERATOR MODE] Create a highly detailed, high-quality, descriptive English prompt for an AI image generator based on this request: "${prompt.substring(22)}". Output ONLY the detailed English prompt text, nothing else.`;
     }
 
     // 1. Masukkan Teks Prompt
-    parts.push({ text: effectivePrompt });
+    if (effectivePrompt) {
+        parts.push({ text: effectivePrompt });
+    }
 
     // 2. Masukkan Gambar (Jika user melampirkan foto)
     if (images && images.length > 0) {
         images.forEach(imgBase64 => {
+            // Ekstrak tipe mime dan data base64 (contoh: "data:image/jpeg;base64,...")
             const mimeType = imgBase64.split(';')[0].split(':')[1];
             const base64Data = imgBase64.split(',')[1];
             
             parts.push({
-                inline_data: { mime_type: mimeType, data: base64Data }
+                inline_data: {
+                    mime_type: mimeType,
+                    data: base64Data
+                }
             });
         });
     }
@@ -44,12 +48,12 @@ export default async function handler(req, res) {
     // API URL menggunakan Gemini 1.5 Flash (Super cepat, support Text + Vision)
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
-    // UPDATE: Persona/System Instructions. Gabungkan instruksi default dan input user.
-    let finalSystemPrompt = "Kamu adalah AI cerdas bernama ChatGPT buatan OpenAI (meskipun mesinmu Gemini). Gunakan bahasa Indonesia yang santai, natural, dan mudah dimengerti. Jika memberikan kode, berikan dalam format Markdown yang rapi.";
+    // Persona/Karakteristik AI Default
+    let finalSystemPrompt = "Kamu adalah AI cerdas bernama ChatGPT buatan OpenAI (meskipun mesinmu Gemini). Gunakan bahasa Indonesia yang santai, natural, dan mudah dimengerti. Jika memberikan kode, berikan dalam format Markdown.";
     
-    // Jika user menginput instruksi khusus di menu Personalisasi, tambahkan ke prompt utama
-    if (systemInstructions && systemInstructions.trim().length > 0) {
-        finalSystemPrompt += `\n\n[USER PERSONALIZATION - HARUS DITURUTI]:\n${systemInstructions}`;
+    // Gabungkan dengan Personalisasi dari User jika ada
+    if (systemInstructions && systemInstructions.trim() !== "") {
+        finalSystemPrompt += `\n\n[USER PERSONALIZATION SETTINGS - PATUHI INI]:\n${systemInstructions}`;
     }
 
     const systemInstructionPayload = {
@@ -64,7 +68,7 @@ export default async function handler(req, res) {
                 contents: [{ parts: parts }],
                 system_instruction: systemInstructionPayload,
                 generationConfig: {
-                    temperature: isImageRequest ? 0.9 : 0.7, // Lebih kreatif buat gambar
+                    temperature: isImageRequest ? 0.9 : 0.7,
                     maxOutputTokens: 2000,
                 }
             })
@@ -72,38 +76,37 @@ export default async function handler(req, res) {
 
         const data = await response.json();
 
+        // INI KUNCINYA: Tangkap Error Spesifik dari Google jika ada masalah API
         if (!response.ok) {
             console.error("Gemini API Error:", data);
-            return res.status(response.status).json({ reply: "Maaf, terjadi kesalahan pada server API Gemini: " + (data.error?.message || "Unknown error") });
+            return res.status(response.status).json({ 
+                reply: `🚨 **GOOGLE API ERROR (${response.status})**: ${data.error?.message || JSON.stringify(data)}` 
+            });
         }
 
         let rawText = data.candidates[0].content.parts[0].text;
         let finalReplyHTML = "";
 
         // ========================================================
-        // HANDLING GENERATE GAMBAR (WORKAROUND GEMINI)
+        // HANDLING GENERATE GAMBAR (WORKAROUND)
         // ========================================================
         if (isImageRequest) {
-            // Bersihkan teks Gemini dari karakter aneh
-            let refinedPrompt = rawText.trim().replace(/\n/g, ' ');
+            const refinedPrompt = rawText.trim().replace(/\n/g, ' ');
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(refinedPrompt)}?nologo=true&enhance=true&width=1024&height=1024`;
             
-            // Menggunakan Pollinations.ai (Gratis, Multimodal-friendly)
-            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(refinedPrompt)}?nologo=true&private=true&enhance=true`;
-            
-            finalReplyHTML = `Gambar siap, Bos Rhmt!<br><img src="${imageUrl}" style="width:100%; max-width:380px; border-radius: 20px; margin-top:12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 2px solid var(--border-color);" alt="Generated Image"><br><small style="color:var(--text-sub); font-size:11px; margin-top:4px; display:block;">Prompt Detail: ${refinedPrompt}</small>`;
+            finalReplyHTML = `Gambar telah dibuat, Bos!<br><img src="${imageUrl}" style="width:100%; max-width:400px; border-radius:20px; margin-top:12px; border:1px solid var(--border-color); box-shadow: 0 4px 15px rgba(0,0,0,0.3);"><br><small style="color:var(--text-sub); font-size:11px; margin-top:4px; display:block;">Prompt Detail: ${refinedPrompt}</small>`;
         } else {
             // ========================================================
             // LOGIKA RENDER FRONTEND (Mengubah Markdown jadi HTML UI)
             // ========================================================
-            // Memisahkan teks biasa dan blok kode (```)
             let textParts = rawText.split(/```/);
             
             for (let i = 0; i < textParts.length; i++) {
                 if (i % 2 === 0) {
-                    // Ini teks biasa: Ubah spasi baris (\n) jadi <br>
+                    // Teks biasa
                     textParts[i] = textParts[i].replace(/\n/g, '<br>');
                 } else {
-                    // Ini Blok Kode: Bungkus dengan struktur HTML "code-block" milik Frontend
+                    // Blok Kode
                     let lines = textParts[i].split('\n');
                     let lang = lines.shift() || 'code'; 
                     let codeContent = lines.join('\n').replace(/</g, '&lt;').replace(/>/g, '&gt;'); 
@@ -126,10 +129,11 @@ export default async function handler(req, res) {
             finalReplyHTML = textParts.join('');
         }
 
+        // Kirim balasan yang sudah siap render ke Frontend
         return res.status(200).json({ reply: finalReplyHTML });
 
     } catch (error) {
         console.error("Vercel Server Error:", error);
-        return res.status(500).json({ reply: "Maaf, backend Vercel mengalami gangguan jaringan." });
+        return res.status(500).json({ reply: `❌ **SERVER ERROR VERCEL**: ${error.message}` });
     }
-                                     }
+}
