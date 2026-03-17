@@ -46,8 +46,8 @@ export default async function handler(req, res) {
     }
 
     // API URL menggunakan Gemini 1.5 Flash (Super cepat, support Text + Vision)
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-
+    const url = https:`//generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${keys[i]}`;
+            
     // Persona/Karakteristik AI Default
     let finalSystemPrompt = "Kamu adalah AI cerdas bernama ChatGPT buatan OpenAI (meskipun mesinmu Gemini). Gunakan bahasa Indonesia yang santai, natural, dan mudah dimengerti. Jika memberikan kode, berikan dalam format Markdown.";
     
