@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     // Menangkap data dari Frontend (Teks, Gambar Base64, ChatID, Mode Sementara, System Instructions)
     const { prompt, images, chatId, isTemp, systemInstructions } = req.body;
 
-    // Menyiapkan Payload Multimodal untuk Gemini 1.5 Flash
+    // Menyiapkan Payload Multimodal untuk Gemini 1.5 Flash / 2.5 Flash
     let parts = [];
 
     // Logika deteksi permintaan gambar
@@ -45,8 +45,8 @@ export default async function handler(req, res) {
         });
     }
 
-    // API URL menggunakan Gemini 1.5 Flash (Super cepat, support Text + Vision)
-    const url = https:`//generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${keys[i]}`;
+    // FIX: URL API dibenarkan strukturnya agar bisa jalan (Menggunakan Gemini 2.5 Flash)
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
             
     // Persona/Karakteristik AI Default
     let finalSystemPrompt = "Kamu adalah AI cerdas bernama ChatGPT buatan OpenAI (meskipun mesinmu Gemini). Gunakan bahasa Indonesia yang santai, natural, dan mudah dimengerti. Jika memberikan kode, berikan dalam format Markdown.";
@@ -136,4 +136,4 @@ export default async function handler(req, res) {
         console.error("Vercel Server Error:", error);
         return res.status(500).json({ reply: `❌ **SERVER ERROR VERCEL**: ${error.message}` });
     }
-}
+        }
