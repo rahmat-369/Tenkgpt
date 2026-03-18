@@ -45,7 +45,7 @@ export default async function handler(req, res) {
         });
     }
 
-    // FIX: URL API dibenarkan strukturnya agar bisa jalan (Menggunakan Gemini 2.5 Flash)
+    // FIX BUG: URL API dibenarkan strukturnya agar bisa jalan (Menggunakan Gemini 2.5 Flash)
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
             
     // Persona/Karakteristik AI Default
@@ -136,4 +136,4 @@ export default async function handler(req, res) {
         console.error("Vercel Server Error:", error);
         return res.status(500).json({ reply: `❌ **SERVER ERROR VERCEL**: ${error.message}` });
     }
-        }
+    } 
