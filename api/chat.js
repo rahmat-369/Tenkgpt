@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     // Menangkap data dari Frontend (Teks, Gambar Base64, ChatID, Mode Sementara, System Instructions)
     const { prompt, images, chatId, isTemp, systemInstructions } = req.body;
 
-    // Menyiapkan Payload Multimodal untuk Gemini 1.5 Flash / 2.5 Flash
+    // Menyiapkan Payload Multimodal untuk Gemini
     let parts = [];
 
     // Logika deteksi permintaan gambar
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
         });
     }
 
-    // FIX BUG: URL API dibenarkan strukturnya agar bisa jalan (Menggunakan Gemini 2.5 Flash)
+    // FIX: URL API dibenarkan strukturnya menggunakan backtick dan variabel apiKey yang benar
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
             
     // Persona/Karakteristik AI Default
@@ -136,4 +136,4 @@ export default async function handler(req, res) {
         console.error("Vercel Server Error:", error);
         return res.status(500).json({ reply: `❌ **SERVER ERROR VERCEL**: ${error.message}` });
     }
-    } 
+}
