@@ -6,13 +6,10 @@ export default async function handler(req, res) {
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-        return res.status(500).json({ reply: "DEBUG: GEMINI_API_KEY tidak ditemukan di environment Vercel." });
+        return res.status(500).json({ reply: "🚨 ERROR VERCEL: GEMINI_API_KEY tidak ditemukan di Environment Variables Vercel." });
     }
 
-    // Menangkap data dari Frontend (Teks, Gambar Base64, ChatID, Mode Sementara, System Instructions)
     const { prompt, images, chatId, isTemp, systemInstructions } = req.body;
-
-    // Menyiapkan Payload Multimodal untuk Gemini
     let parts = [];
 
     // Logika deteksi permintaan gambar
@@ -20,19 +17,16 @@ export default async function handler(req, res) {
     let effectivePrompt = prompt;
 
     if (isImageRequest) {
-        // Trik: Minta Gemini buat prompt Inggris detail untuk image generator
         effectivePrompt = `[IMAGE GENERATOR MODE] Create a highly detailed, high-quality, descriptive English prompt for an AI image generator based on this request: "${prompt.substring(22)}". Output ONLY the detailed English prompt text, nothing else.`;
     }
 
-    // 1. Masukkan Teks Prompt
     if (effectivePrompt) {
         parts.push({ text: effectivePrompt });
     }
 
-    // 2. Masukkan Gambar (Jika user melampirkan foto)
+    // Handle Gambar (Base64) dari frontend
     if (images && images.length > 0) {
         images.forEach(imgBase64 => {
-            // Ekstrak tipe mime dan data base64 (contoh: "data:image/jpeg;base64,...")
             const mimeType = imgBase64.split(';')[0].split(':')[1];
             const base64Data = imgBase64.split(',')[1];
             
@@ -45,10 +39,9 @@ export default async function handler(req, res) {
         });
     }
 
-    // FIX: URL API dibenarkan strukturnya menggunakan backtick dan variabel apiKey yang benar
+    // FIX: Menggunakan Gemini 2.5 Flash sesuai models.json lo
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
             
-    // Persona/Karakteristik AI Default
     let finalSystemPrompt = "Kamu adalah AI cerdas bernama ChatGPT buatan OpenAI (meskipun mesinmu Gemini). Gunakan bahasa Indonesia yang santai, natural, dan mudah dimengerti. Jika memberikan kode, berikan dalam format Markdown.";
     
     // Gabungkan dengan Personalisasi dari User jika ada
@@ -56,17 +49,13 @@ export default async function handler(req, res) {
         finalSystemPrompt += `\n\n[USER PERSONALIZATION SETTINGS - PATUHI INI]:\n${systemInstructions}`;
     }
 
-    const systemInstructionPayload = {
-        parts: [{ text: finalSystemPrompt }]
-    };
-
     try {
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 contents: [{ parts: parts }],
-                system_instruction: systemInstructionPayload,
+                system_instruction: { parts: [{ text: finalSystemPrompt }] },
                 generationConfig: {
                     temperature: isImageRequest ? 0.9 : 0.7,
                     maxOutputTokens: 2000,
@@ -76,7 +65,7 @@ export default async function handler(req, res) {
 
         const data = await response.json();
 
-        // INI KUNCINYA: Tangkap Error Spesifik dari Google jika ada masalah API
+        // INI KUNCINYA: Tangkap Error Spesifik dari Google 
         if (!response.ok) {
             console.error("Gemini API Error:", data);
             return res.status(response.status).json({ 
@@ -87,26 +76,20 @@ export default async function handler(req, res) {
         let rawText = data.candidates[0].content.parts[0].text;
         let finalReplyHTML = "";
 
-        // ========================================================
-        // HANDLING GENERATE GAMBAR (WORKAROUND)
-        // ========================================================
+        // HANDLING GENERATE GAMBAR
         if (isImageRequest) {
             const refinedPrompt = rawText.trim().replace(/\n/g, ' ');
             const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(refinedPrompt)}?nologo=true&enhance=true&width=1024&height=1024`;
             
             finalReplyHTML = `Gambar telah dibuat, Bos!<br><img src="${imageUrl}" style="width:100%; max-width:400px; border-radius:20px; margin-top:12px; border:1px solid var(--border-color); box-shadow: 0 4px 15px rgba(0,0,0,0.3);"><br><small style="color:var(--text-sub); font-size:11px; margin-top:4px; display:block;">Prompt Detail: ${refinedPrompt}</small>`;
         } else {
-            // ========================================================
-            // LOGIKA RENDER FRONTEND (Mengubah Markdown jadi HTML UI)
-            // ========================================================
+            // LOGIKA RENDER FRONTEND 
             let textParts = rawText.split(/```/);
             
             for (let i = 0; i < textParts.length; i++) {
                 if (i % 2 === 0) {
-                    // Teks biasa
                     textParts[i] = textParts[i].replace(/\n/g, '<br>');
                 } else {
-                    // Blok Kode
                     let lines = textParts[i].split('\n');
                     let lang = lines.shift() || 'code'; 
                     let codeContent = lines.join('\n').replace(/</g, '&lt;').replace(/>/g, '&gt;'); 
@@ -129,11 +112,10 @@ export default async function handler(req, res) {
             finalReplyHTML = textParts.join('');
         }
 
-        // Kirim balasan yang sudah siap render ke Frontend
         return res.status(200).json({ reply: finalReplyHTML });
 
     } catch (error) {
         console.error("Vercel Server Error:", error);
         return res.status(500).json({ reply: `❌ **SERVER ERROR VERCEL**: ${error.message}` });
     }
-}
+        } 
